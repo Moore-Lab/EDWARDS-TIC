@@ -379,24 +379,6 @@ class PumpPanel(ttk.LabelFrame):
                                      command=self._stop_pump, width=14)
         self.stop_btn.pack(side="left", padx=6)
 
-        # Speed setpoint
-        spd_frm = ttk.LabelFrame(ctrl, text="Speed Setpoint", padding=6)
-        spd_frm.grid(row=1, column=0, columnspan=2, sticky="ew", pady=6)
-
-        self.speed_var = tk.IntVar(value=100)
-        self.speed_scale = ttk.Scale(spd_frm, from_=0, to=100,
-                                      variable=self.speed_var,
-                                      orient="horizontal", length=180,
-                                      command=self._on_scale)
-        self.speed_scale.grid(row=0, column=0, padx=5, pady=4)
-        self.speed_disp = tk.StringVar(value="100%")
-        ttk.Label(spd_frm, textvariable=self.speed_disp, width=5).grid(
-            row=0, column=1, padx=5)
-
-        ttk.Button(spd_frm, text="Set Speed",
-                   command=self._set_speed).grid(
-            row=1, column=0, columnspan=2, pady=4)
-
         # Poll controls
         poll_frm = ttk.LabelFrame(ctrl, text="Telemetry Poll", padding=6)
         poll_frm.grid(row=2, column=0, columnspan=2, sticky="ew", pady=6)
@@ -420,12 +402,9 @@ class PumpPanel(ttk.LabelFrame):
         self.columnconfigure(1, weight=1)
 
         fields = [
-            ("Status",      "status_var",   "Unknown"),
-            ("Speed",       "speed_rd_var",  "---"),
-            ("Power",       "power_var",    "---"),
-            ("Current",     "current_var",  "---"),
-            ("Voltage",     "voltage_var",  "---"),
-            ("Temperature", "temp_var",     "---"),
+            ("Status", "status_var",  "Unknown"),
+            ("Speed",  "speed_rd_var", "---"),
+            ("Power",  "power_var",   "---"),
         ]
         self._tel_vars = {}
         for i, (label, attr, default) in enumerate(fields):
@@ -467,18 +446,6 @@ class PumpPanel(ttk.LabelFrame):
             return
         threading.Thread(target=ctl.stop_pump, daemon=True).start()
 
-    def _on_scale(self, _=None):
-        self.speed_disp.set(f"{int(self.speed_var.get())}%")
-
-    def _set_speed(self):
-        ctl = self.get_controller()
-        if not ctl or not ctl.is_connected:
-            messagebox.showwarning("Not Connected", "Connect to the TIC first.")
-            return
-        pct = int(self.speed_var.get())
-        threading.Thread(target=lambda: ctl.set_pump_speed(pct),
-                         daemon=True).start()
-
     # =========================================================================
     # Telemetry display
     # =========================================================================
@@ -506,11 +473,8 @@ class PumpPanel(ttk.LabelFrame):
         self._status_lbl.config(foreground=color)
         self._set_led(tel.is_running)
 
-        self.speed_rd_var.set(f"{tel.speed_pct}%" if tel.speed_pct is not None else "---")
+        self.speed_rd_var.set(f"{tel.speed_pct:.1f}%" if tel.speed_pct is not None else "---")
         self.power_var.set(f"{tel.power_w:.1f} W" if tel.power_w is not None else "---")
-        self.current_var.set(f"{tel.current_a:.2f} A" if tel.current_a is not None else "---")
-        self.voltage_var.set(f"{tel.voltage_v:.1f} V" if tel.voltage_v is not None else "---")
-        self.temp_var.set(f"{tel.temp_c:.1f} °C" if tel.temp_c is not None else "---")
 
     def _show_error(self, msg):
         self.status_var.set("READ ERROR")

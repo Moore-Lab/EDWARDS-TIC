@@ -147,7 +147,7 @@ class TICConnection:
     @staticmethod
     def _parse_response(raw: str, param_id: int) -> str:
         """
-        Parse a TIC response line and return the first value field.
+        Parse a TIC query response (=V) and return the first value field.
 
         Raises:
             IOError: on TIC error response or unrecognised format
@@ -160,6 +160,21 @@ class TICConnection:
             raise IOError(f"Unexpected TIC response for parameter {param_id}: {raw!r}")
 
         return match.group(1).split(";")[0]
+
+    @staticmethod
+    def _parse_command_response(raw: str, param_id: int) -> None:
+        """
+        Parse a TIC command response (*C<id> <code>) where code 0 means success.
+
+        Raises:
+            IOError: on non-zero error code or unrecognised format
+        """
+        match = re.match(r"\*C\d+\s+(\d+)", raw)
+        if not match:
+            raise IOError(f"Unexpected TIC command response for {param_id}: {raw!r}")
+        code = int(match.group(1))
+        if code != 0:
+            raise IOError(f"TIC command error {code} for parameter {param_id}: {raw!r}")
 
     # =========================================================================
     # Public query / write
@@ -200,9 +215,9 @@ class TICConnection:
         Returns:
             True if the TIC acknowledged the command.
         """
-        raw = self._send(f"!V{param_id} {value}\r")
+        raw = self._send(f"!C{param_id} {value}\r")
         try:
-            self._parse_response(raw, param_id)
+            self._parse_command_response(raw, param_id)
             return True
         except IOError as e:
             print(f"Write error: {e}")
