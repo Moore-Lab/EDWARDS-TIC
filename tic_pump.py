@@ -16,15 +16,21 @@ object numbers depend on the firmware version and attached pump model.
   ---------------
   904 — Pump speed          (integer, % of full speed)
   905 — Pump power          (W)
-  906 — Pump current        (A, scaled ×100 by TIC — divided here)
+  906 — Pump current        (A)
   907 — Pump voltage        (V)
   908 — Pump temperature    (°C)
-  909 — Pump status word    (bitfield — see PumpStatus below)
+  909 — Pump state enum     (0=stopped, 2=running, 6=at-speed — NOT a bitmask)
 
   WRITE parameters
   ----------------
   910 — Start / Stop        (1 = start, 0 = stop)
   904 — Normal-speed target (integer, % of full speed; 0 resets to full)
+
+Note on pump state vs. bitmask
+-------------------------------
+The TIC returns a state-machine integer from parameter 909, not a bitmask.
+Running state is therefore derived from pump speed (parameter 904) rather
+than from status bits: speed > 0 means the pump is spinning.
 
 Date: 2026-04-16
 """
@@ -32,7 +38,6 @@ Date: 2026-04-16
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntFlag
 from typing import Optional
 
 from tic_connection import TICConnection
@@ -51,22 +56,6 @@ PARAM_STATUS      = 909
 PARAM_START_STOP  = 910
 
 
-# ---------------------------------------------------------------------------
-# Pump status word bit definitions
-# ---------------------------------------------------------------------------
-
-class PumpStatusBits(IntFlag):
-    """Bit flags for the TIC pump status word (parameter 909)."""
-    RUNNING   = 1 << 0   # pump is spinning
-    FAILED    = 1 << 1   # drive fault
-    STANDBY   = 1 << 2   # at standby speed
-    AT_SPEED  = 1 << 3   # at normal (full) speed
-    ACCEL     = 1 << 4   # accelerating
-    DECEL     = 1 << 5   # decelerating
-    OVERTEMP  = 1 << 6   # over-temperature warning
-    OVERVOLT  = 1 << 7   # over-voltage warning
-
-
 @dataclass
 class PumpTelemetry:
     """All pump readings from a single poll."""
@@ -75,7 +64,7 @@ class PumpTelemetry:
     current_a:   Optional[float] = None   # Amperes
     voltage_v:   Optional[float] = None   # Volts
     temp_c:      Optional[float] = None   # °C
-    status_word: Optional[int]   = None   # raw status bitfield
+    state_raw:   Optional[int]   = None   # raw state enum from parameter 909
     errors:      dict = None
 
     def __post_init__(self):
@@ -84,33 +73,31 @@ class PumpTelemetry:
 
     @property
     def is_running(self) -> bool:
-        if self.status_word is None:
-            return False
-        return bool(self.status_word & PumpStatusBits.RUNNING)
+        """True if the pump is spinning — derived from speed, not status bits."""
+        if self.speed_pct is not None:
+            return self.speed_pct > 0
+        return False
 
     @property
     def at_speed(self) -> bool:
-        if self.status_word is None:
-            return False
-        return bool(self.status_word & PumpStatusBits.AT_SPEED)
+        """True if the pump is at or very near full speed (≥ 95 %)."""
+        if self.speed_pct is not None:
+            return self.speed_pct >= 95
+        return False
 
     @property
     def has_fault(self) -> bool:
-        if self.status_word is None:
-            return False
-        return bool(self.status_word & PumpStatusBits.FAILED)
+        return False   # fault detection requires model-specific state decoding
 
     @property
     def status_str(self) -> str:
-        if self.status_word is None:
+        if self.speed_pct is None:
             return "Unknown"
-        if self.has_fault:
-            return "FAULT"
-        if self.is_running and self.at_speed:
+        if self.speed_pct == 0:
+            return "Stopped"
+        if self.at_speed:
             return "At Speed"
-        if self.is_running:
-            return "Accelerating"
-        return "Stopped"
+        return f"Running ({self.speed_pct} %)"
 
     def __str__(self) -> str:
         parts = [f"Status: {self.status_str}"]
@@ -195,35 +182,33 @@ class TICPump:
             (PARAM_CURRENT,     "current"),
             (PARAM_VOLTAGE,     "voltage"),
             (PARAM_TEMPERATURE, "temp"),
-            (PARAM_STATUS,      "status"),
+            (PARAM_STATUS,      "state"),
         ]
 
         for param_id, key in params:
             try:
                 raw = self._conn.query_float(param_id)
                 if key == "speed":
-                    tel.speed_pct   = int(raw)
+                    tel.speed_pct  = int(raw)
                 elif key == "power":
-                    tel.power_w     = raw
+                    tel.power_w    = raw
                 elif key == "current":
-                    # TIC may return current scaled by 100 — adjust if needed
-                    tel.current_a   = raw
+                    tel.current_a  = raw
                 elif key == "voltage":
-                    tel.voltage_v   = raw
+                    tel.voltage_v  = raw
                 elif key == "temp":
-                    tel.temp_c      = raw
-                elif key == "status":
-                    tel.status_word = int(raw)
+                    tel.temp_c     = raw
+                elif key == "state":
+                    tel.state_raw  = int(raw)
             except Exception as e:
                 tel.errors[key] = str(e)
 
         return tel
 
     def is_running(self) -> Optional[bool]:
-        """Return True if the pump is currently running, None on read error."""
+        """Return True if the pump is spinning (speed > 0), None on read error."""
         try:
-            status = self._conn.query_int(PARAM_STATUS)
-            return bool(status & PumpStatusBits.RUNNING)
+            return int(self._conn.query_float(PARAM_SPEED)) > 0
         except Exception:
             return None
 
