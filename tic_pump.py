@@ -151,17 +151,13 @@ class TICPump:
 
     def start(self) -> bool:
         """Send the start command to the turbo pump."""
-        ok = self._conn.write_param(PARAM_START_STOP, 1)
-        if ok:
-            print("Turbo pump start command sent")
-        return ok
+        self._conn.write_param(PARAM_START_STOP, 1)   # raises IOError on TIC rejection
+        return True
 
     def stop(self) -> bool:
         """Send the stop command to the turbo pump."""
-        ok = self._conn.write_param(PARAM_START_STOP, 0)
-        if ok:
-            print("Turbo pump stop command sent")
-        return ok
+        self._conn.write_param(PARAM_START_STOP, 0)   # raises IOError on TIC rejection
+        return True
 
     def set_speed(self, percent: int) -> bool:
         """

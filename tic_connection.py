@@ -19,6 +19,7 @@ Date: 2026-04-16
 from __future__ import annotations
 
 import re
+import threading
 from typing import Optional
 
 try:
@@ -53,6 +54,7 @@ class TICConnection:
         self._baudrate = baudrate
         self._timeout  = timeout
         self._ser: Optional[serial.Serial] = None
+        self._lock = threading.Lock()   # serialise concurrent poll / command threads
 
     # =========================================================================
     # Properties
@@ -132,17 +134,18 @@ class TICConnection:
             RuntimeError: if not connected
             IOError:      if no response received
         """
-        if not self.is_connected:
-            raise RuntimeError("Not connected to TIC")
+        with self._lock:
+            if not self.is_connected:
+                raise RuntimeError("Not connected to TIC")
 
-        self._ser.reset_input_buffer()
-        self._ser.write(command.encode("ascii"))
-        raw = self._ser.read_until(b"\r").decode("ascii", errors="replace").strip()
+            self._ser.reset_input_buffer()
+            self._ser.write(command.encode("ascii"))
+            raw = self._ser.read_until(b"\r").decode("ascii", errors="replace").strip()
 
-        if not raw:
-            raise IOError(f"No response to command {command!r} — check cable and port")
+            if not raw:
+                raise IOError(f"No response to command {command!r} — check cable and port")
 
-        return raw
+            return raw
 
     @staticmethod
     def _parse_response(raw: str, param_id: int) -> str:
@@ -205,8 +208,7 @@ class TICConnection:
             self._parse_response(raw, param_id)
             return True
         except IOError as e:
-            print(f"Write error: {e}")
-            return False
+            raise IOError(f"TIC write_param({param_id}, {value}) rejected: {e}") from e
 
     # =========================================================================
     # Context manager
