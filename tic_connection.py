@@ -5,10 +5,12 @@ Low-level RS-232 connection layer for the Edwards TIC (Turbo Instrument Controll
 
 Protocol
 --------
-  Query  : ?V<id>\r
-  Write  : !V<id> <value>\r
-  OK resp: =V<id> <value>[;<extra>...]\r
-  Err rsp: *V<id> <code>\r
+  Query      : ?V<id>\r
+  Query resp : =V<id> <value>[;<extra>...]\r  (success)
+               *V<id> <code>\r                (error)
+  Write      : !C<id> <value>\r
+  Write resp : *C<id> 0\r                    (success, code 0)
+               *C<id> <code>\r               (error, non-zero code)
 
 Values are returned in SI units (Pa for pressure).  Callers are responsible
 for unit conversion.
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from typing import Optional
 
 try:
@@ -55,6 +58,8 @@ class TICConnection:
         self._timeout  = timeout
         self._ser: Optional[serial.Serial] = None
         self._lock = threading.Lock()   # serialise concurrent poll / command threads
+        self._last_cmd_t: float = 0.0   # monotonic time of last completed command
+        self._min_gap_s:  float = 0.05  # 50 ms — TIC needs time between commands
 
     # =========================================================================
     # Properties
@@ -138,9 +143,19 @@ class TICConnection:
             if not self.is_connected:
                 raise RuntimeError("Not connected to TIC")
 
+            # Edwards TIC needs a minimum gap between successive RS-232 commands.
+            # Without this, a write fired immediately after a read is rejected (*V... 2).
+            gap = self._min_gap_s - (time.monotonic() - self._last_cmd_t)
+            if gap > 0:
+                time.sleep(gap)
+
             self._ser.reset_input_buffer()
             self._ser.write(command.encode("ascii"))
             raw = self._ser.read_until(b"\r").decode("ascii", errors="replace").strip()
+            self._last_cmd_t = time.monotonic()
+
+            if command.startswith("!"):
+                print(f"[TIC] WRITE  sent={command.strip()!r}  raw={raw!r}", flush=True)
 
             if not raw:
                 raise IOError(f"No response to command {command!r} — check cable and port")
@@ -150,7 +165,7 @@ class TICConnection:
     @staticmethod
     def _parse_response(raw: str, param_id: int) -> str:
         """
-        Parse a TIC response line and return the first value field.
+        Parse a TIC query response (=V) and return the first value field.
 
         Raises:
             IOError: on TIC error response or unrecognised format
@@ -163,6 +178,21 @@ class TICConnection:
             raise IOError(f"Unexpected TIC response for parameter {param_id}: {raw!r}")
 
         return match.group(1).split(";")[0]
+
+    @staticmethod
+    def _parse_command_response(raw: str, param_id: int) -> None:
+        """
+        Parse a TIC command response (*C<id> <code>) where code 0 means success.
+
+        Raises:
+            IOError: on non-zero error code or unrecognised format
+        """
+        match = re.match(r"\*C\d+\s+(\d+)", raw)
+        if not match:
+            raise IOError(f"Unexpected TIC command response for {param_id}: {raw!r}")
+        code = int(match.group(1))
+        if code != 0:
+            raise IOError(f"TIC command error {code} for parameter {param_id}: {raw!r}")
 
     # =========================================================================
     # Public query / write
@@ -194,7 +224,7 @@ class TICConnection:
 
     def write_param(self, param_id: int, value) -> bool:
         """
-        Send a !V<id> <value> command to set a TIC parameter.
+        Send a !C<id> <value> command to set a TIC parameter.
 
         Args:
             param_id: TIC parameter number (e.g. 910 to start/stop pump).
@@ -203,12 +233,13 @@ class TICConnection:
         Returns:
             True if the TIC acknowledged the command.
         """
-        raw = self._send(f"!V{param_id} {value}\r")
+        raw = self._send(f"!C{param_id} {value}\r")
         try:
-            self._parse_response(raw, param_id)
+            self._parse_command_response(raw, param_id)
             return True
         except IOError as e:
-            raise IOError(f"TIC write_param({param_id}, {value}) rejected: {e}") from e
+            print(f"Write error: {e}")
+            return False
 
     # =========================================================================
     # Context manager
