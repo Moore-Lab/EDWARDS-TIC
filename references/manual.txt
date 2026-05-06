@@ -1,0 +1,891 @@
+
+
+=== PAGE 1 ===
+
+D39730880
+Issue J Original
+Instruction Manual
+Turbo Instrument Controller (TIC) Serial Communications
+Note: Laptop PC not included
+Description Item Number
+TIC Instrument Controller D39700000
+TIC Instrument Controller 6-Gauge D39701000
+TIC Instrument Controller 6-Gauge Capacitance Manometer D39702000
+TIC Turbo Controller 100 W D39711000
+TIC Turbo Controller 200 W D39712000
+TIC Turbo & Instrument Controller 100 W D39721000
+TIC Turbo & Instrument Controller 200 W D39722000
+
+=== PAGE 2 ===
+
+D39730880_J - Copyright notice
+Copyright notice
+© Edwards Limited 2023. All rights reserved.
+Trademark credits
+Edwards and the Edwards logo are trademarks of Edwards Limited.
+
+=== PAGE 3 ===
+
+Contents
+D39730880 Issue J
+Contents
+Section Page
+1 Introduction .......................................................................................1
+1.1 Scope ......................................................................................................................1
+1.2 Message basics ...........................................................................................................1
+1.2.1 Commands ................................................................................................................1
+1.2.2 Queries ....................................................................................................................1
+1.2.3 Responses .................................................................................................................2
+1.2.4 Setup .......................................................................................................................2
+1.3 DX, nEXT and nXDS pumps ..............................................................................................2
+1.4 Communications timings ................................................................................................2
+1.5 Object IDs .................................................................................................................2
+1.6 TIC serial protocol messages ...........................................................................................3
+1.6.1 TIC serial protocol - multi-drop prefix to a message ...............................................................3
+1.6.2 PC serial ...................................................................................................................3
+1.7 Additional information .................................................................................................13
+1.7.1 Serial comms response codes (*Cnnn x, *S, *V) ....................................................................13
+1.7.2 Priority ...................................................................................................................13
+1.7.3 Alert ID ...................................................................................................................13
+1.7.4 SNVT values ..............................................................................................................15
+1.7.5 Command list ............................................................................................................15
+1.7.6 State ......................................................................................................................15
+1.7.7 Active gauge states .....................................................................................................15
+1.7.8 Full pump states ........................................................................................................16
+1.7.9 Gas types .................................................................................................................16
+1.7.10 Gauge types .............................................................................................................16
+1.7.11 Pump types ..............................................................................................................17
+Index .............................................................................................. 19
+For return of equipment, complete the HS Forms at the end of this manual.
+Table
+Page
+1 Objects accessed via the PC serial comms ..........................................................................4
+2 Abbreviations ............................................................................................................12
+3 Serial comms response codes .........................................................................................13
+Page i
+7400-NCG-DVS-3202
+
+=== PAGE 4 ===
+
+D39730880 Issue J
+This page has been intentionally left blank.
+Page ii
+
+=== PAGE 5 ===
+
+Page 1
+Introduction
+D39730880 Issue J
+1 Introduction
+1.1 Scope
+This manual provides Operation instructions for serial interface communications to the Edwards Turbo Instrument
+Controller product range, part numbers:
+Description Item Number
+TIC Instrument Controller D39700000
+TIC Instrument Controller 6-Gauge D39701000
+TIC Instrument Controller 6-Gauge Capacitance Manometer D39702000
+TIC Turbo Controller 100 W D39711000
+TIC Turbo Controller 200 W D39712000
+TIC Turbo & Instrument Controller 100 W D39721000
+TIC Turbo & Instrument Controller 200 W D39722000
+CAUTION
+Before using these instructions, ensure that you have a good understanding about the operation of the
+controller.
+1.2 Message basics
+The communications to the TIC work on a master/slave principle. The TIC is the slave and will only transmit a message
+in response to one sent to it. The master, a PC for example, must always start the conversation.
+A conversation consists of a message to the TIC and its response back. Having sent a message to the TIC, wait for the
+reply before continuing.
+There are two basic types of message sent to the TIC:
+ Command sending information to the TIC (!).
+ Query requesting information from the TIC (?).
+All messages end with a carriage return.
+In multi-drop mode, the ? and ! are preceded by the addressing information.
+Characters not enclosed by start (!?) and end (cr) characters will be ignored. Incomplete messages will be ignored if
+a new start character is received.
+1.2.1 Commands
+Commands send information to the TIC. These can be literal commands such as 'turn pump on' or setups to be stored
+by the TIC. Setups hold information about how the TIC should behave such as the conditions under which the vent
+valve should open.
+1.2.2 Queries
+Queries request information from the TIC. These can be direct queries of the value of a parameter such as pump
+speed, or reading the setup value currently in the TIC.
+
+=== PAGE 6 ===
+
+D39730880 Issue J
+Page 2
+Introduction
+1.2.3 Responses
+Responses from the TIC contain either the data requested (=) or the status of the command (*). Note that for
+commands such as Upload/Download, the action will continue after the response has been received. Also detailed
+checking is performed by the objects themselves so a good response only guarantees that the message was accepted
+by the serial communications, correct behaviour must be checked by querying the appropriate attribute. For example
+write a setup, read it back and check the updates are as requested.
+1.2.4 Setup
+Some objects have more than one setup, for these objects the config type is sent and returned as the first parameter
+in the data field.
+1.3 DX, nEXT and nXDS pumps
+The TIC will pass messages to the DX, nEXT or nXDS pump and return the replies. It limits some of the commands that
+can be sent directly as the TIC must take account of setups and inputs connected to it. For example, if SYSI is set
+into the fail condition; the turbo pump must not run so on/off commands directly to the DX, nEXT or nXDS are always
+ignored, use the TIC turbo object instead.
+Under a fault condition the DX and nEXT move through their state machines slightly differently. The TIC adjusts the
+information from the nEXT so the TIC’s states move like the DX for both pump types. On fault the TIC shows both
+pumps as fault braking until a stop command is issued. At this point the fault is cleared from the pump object 904
+and the front panel.
+When not using the TIC the main visible difference is that the DX clears its fault bits and fault LED when a stop
+command is issued. The nEXT does not clear them until both a stop and then a start command are issued.
+1.4 Communications timings
+Because of the complexity of the product precise message timings are not defined, however, the following are
+provided for guidance:
+ Basic messages less than 100 mSecs
+ Messages to DX, nEXT or nXDS (dependent on DX or nEXT behaviour) less than 200 mSecs
+ Suggested timeout in master 500 mSecs
+ Upload Turbo (DX/nEXT) less than 2 secs
+ Download Turbo (DX/nEXT) less than 4 secs
+1.5 Object IDs
+This sub-section summarises the protocol, based on the use of object IDs, to identify sources and destinations in
+messages.
+Objects can be physical items such as gauges and pumps, or virtual items such as software modules and data records.
+Each object is allocated a unique identification number, although two instances of a particular item will both have
+the same ID. In a message, the Object ID consists of 1 - 5 ASCII digits representing a number between 1 - 65535, as
+shown below:
+Data fields contain command codes, parameter values or response codes, and will vary in length and format according
+to the message type. If there is more than one item in the data field, each item is separated by a semi colon(;).
+
+=== PAGE 7 ===
+
+Page 3
+Introduction
+D39730880 Issue J
+A returned response code consists of 1 or 2 characters representing a number between 0_99. A code of '0' always
+means 'OK'. Other codes can be used to indicate various error conditions:
+Where several items are linked together using multiple RS232 lines radiating from a hub, a 'multi-drop' identifier is
+prefixed to each message. It is composed of a '#', followed by a 2 character Destination ID, a colon, and a 2 character
+Source ID:
+1.6 TIC serial protocol messages
+GENERAL COMMAND
+NORMAL (or ERROR) RESPONSE
+SETUP COMMAND
+NORMAL (or ERROR) RESPONSE
+QUERY SETUP
+ERROR RESPONSE
+NORMAL RESPONSE
+QUERY VALUE
+ERROR RESPONSE
+NORMAL RESPONSE
+1.6.1 TIC serial protocol - multi-drop prefix to a message
+1.6.2 PC serial
+This covers operations specific to the PC serial link covering control, monitoring and setup of all sections of the TIC
+and the attached pumps.
+Objects in the DX, nEXT or nXDS pump can be read via the TIC at their normal object ID and the TIC will pass the
+messages on and return the reply, refer to DX, nEXT or nXDS requirements Section1.3. Wait for the reply before
+sending in another message even if the new message is for the TIC or 'other' pump.
+
+=== PAGE 8 ===
+
+D39730880 Issue J
+Page 4
+Introduction
+The following objects can be accessed via the PC serial comms:
+Table 1 - Objects accessed via the PC serial comms
+Object ID Object Operations Notes
+800 + DX, nEXT and Routed, refer to DX, nEXT and nXDS pump
+nXDS objects manual
+901 Node ?S 0 – 98 Read multi-drop
+!S Set multi-drop
+Config type not needed
+902 TIC Status ?V T – see turbo state System status, depends on unit type –
+B – see backing state
+G – see gauge state TC
+R – see relay state T;B;R1;R2;R3;Alert ID; priority
+Alert ID of 902
+Highest priority level TIC
+in system T;B;G1;G2;G3;R1;R2;R3;Alert ID; priority
+NB just the state value IC
+is returned between; G1;G2;G3;R1;R2;R3;Alert ID; priority
+IC6
+G1;G2;G3;G4;G5;G6;R1;R2;R3;R4;R5;R6;
+Alert ID; priority
+e.g. TIC
+4;4;0;11;0;0;4;0;0;0
+?S max 80 chars, typical Read system string - TICxxx; SW Ver; Ser
+40 Num; PIC SW ver
+Config type not needed
+903 Unused
+904 Turbo Pump ?V State 0 – 7 - see Pump status – state; alert ID; priority
+Section1.7.8
+Alert – see
+Section1.7.3
+Priority – see
+Section1.7.2
+!C On =1 Turn pump on/off
+Off = 0
+?S see pump type list Read pump type
+!S Config type = 3
+Master – object ID Read slave setup – master; units type; on
+gauge 1/2/3 setpoint; off setpoint, enable
+Units type – 59, 66 see Write slave setup – master; units type; on
+snvt list setpoint; off setpoint, enable
+Setpoint – Config type = 4
+volts 0.000 – 9.999,
+pressure float.
+Enable 1 = on, 0 = off
+Delay 0 – 99 mins Read start delay
+Write start delay
+Config type = 21
+
+=== PAGE 9 ===
+
+Page 5
+Introduction
+D39730880 Issue J
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+905 Turbo speed ?V Value 0.0 – 110.0% Turbo speed – value; alert ID; priority
+?S Times 1 – 30; Read start fail time; droop fail time
+!S 0 - 30 mins Write start fail time; droop fail time
+Config type not needed
+906 Turbo power ?V Value 0.0 – 300.0 w Turbo power – value; alert ID; priority
+(typ)
+907 Turbo normal ?V State 0 = no, 4 = yes At normal speed – state; alert ID; priority
+908 Turbo standby ?V 4 = in standby In standby mode
+0 = not in standby
+!C 1 = set standby Set standby mode
+0 = set not standby
+909 Turbo cycle ?V Value - 0-65535 hours Time period turbo has been on - value; state;
+time alert ID; priority
+910 Backing Pump ?V State 0 – 4 Pump status – state; alert ID; priority
+!C Turn pump on/off
+?S see pump type list Read pump type
+!S Config type = 3
+None = 0 Read backing sequence options - none/on
+On stop = 1 stop/50%
+On 50% = 2 Set backing sequence options
+Config type = 70
+911 Backing speed ?V Value 0.0 – 100.0% Backing speed - value; alert ID; priority
+912 Backing power ?V Value 0.0 – 50.0 w Backing power - value; alert ID; priority
+(typ)
+
+=== PAGE 10 ===
+
+D39730880 Issue J
+Page 6
+Introduction
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+913 Gauge 1 ?V Value – pressure (see Gauge reading and state – value; units type;
+gauge type) or voltage state; alert ID; priority
+0.000 to 11.000 volts.
+?S Master – object ID Read slave setup – master; units type; on
+!S gauge 1/2/3 and turbo setpoint; off setpoint, enable
+speed. Write slave setup – master; units type; on
+Units type – 59, 66, 81 setpoint; off setpoint, enable
+see snvt list. Config type = 4
+Setpoints to suit units
+type and master.
+volts 0.000 – 9.999,
+pressure float, pascals
+speed 0 – 99.
+Gauge type – see gauge Read gauge type – e.g. AIMX
+list Config type = 5
+Gas type – see gas list. Read gauge setup - gas type (volt); filter on/
+Filter 1 = on, off
+0 = off. Set gauge setup - gas type (volt); filter on/off
+Config type = 7
+0 = 1000 Read ASG range
+1 = 2000 mbar Set ASG range
+Config type = 6
+Gauge name Read user gauge name - 4 characters 0-9, A-Z
+Set user gauge name
+Config type = 68
+!C Commands – see Accept new gauge
+command list On/off
+Zero/calibrate/degas
+914 Gauge 2 ?V see gauge 1 see gauge 1
+?S
+!S
+!C
+915 Gauge 3 ?V see gauge 1 see gauge 1
+?S
+!S
+!C
+916 Relay 1 ?V State 0 – 4 Relay state on/off - state; alert ID; priority
+?S Master – object ID Read slave setup – master; units type; on
+!S gauge 1/2/3 setpoint; off setpoint, enable
+Units type – 59, 66, 81 Set slave setup– master; units type; on
+see snvt list setpoint; off setpoint, enable
+Setpoints to suit units Config type not needed
+type
+!C On = 1 Turn relay on/off
+Off = 0
+917 Relay 2 ?V see relay 1 see relay 1
+?S
+!S
+918 Relay 3 ?V see relay 1 see relay 1
+?S
+!S
+
+=== PAGE 11 ===
+
+Page 7
+Introduction
+D39730880 Issue J
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+919 PS ?V 273.0 – 400.0 celsius Power supply temperature value - value;
+Temperature offset by 274 alert ID; priority
+i.e. freezing water =
+274
+920 Internal ?V see PS temperature TIC internal temperature value - value; alert
+Temperature ID; priority
+921 Analogue out ?V 0 – 255 Analogue out value - value; alert ID; priority
+?S Object ID gauge 1/2/3, Read analogue out source
+!S turbo speed Set analogue out source
+Config type not needed
+922 External vent ?V State 0 – 4 Vent valve state on/off – value; alert ID;
+valve priority
+?S On stop = 0 Read vent options – on stop/50%
+!S On 50% = 1 Set vent options
+Config type not needed
+923 Heater band ?V Value 0-2100 mins Heater band time, state on/off – value;
+State 0 – 4 state; alert ID; priority
+!C 0 = off, 1 = on On/off Heater band
+?S Read on time 0-35 hours
+!S Set on time 0-35 hours
+Config type not needed
+924 External Air ?V State 0 – 4 Air cooler state on/off - value; alert ID;
+Cooler priority
+?S Turbo slaved = 1 Read permanently on or turbo slaved
+!S Permanent = 0 Write permanently on or turbo slaved
+Config type not needed
+925 Display ?S -5 – 15 Read contrast setting
+contrast !S Set contrast setting
+Config type not needed
+926 Configuration !C see command list Default TIC
+Operations
+Load config to Turbo (DX or nEXT)
+Load config from Turbo (DX or nEXT)
+928 Lock ?S ?S-Locked = 1 Lock/release config setup
+!S Released = 0 Config lock ON = 501
+!S-Config = 23 Config Lock OFF = 147
+?S-Locked = 1 Lock/release front panel
+Released = 0 Panel lock ON = 509
+!S-Config = 24 Panel locl OFF = 824
+929 Pressure Units ?S kPa = 1 Read display pressure Units – kPascal/mbar/
+!S mbar = 2 Torr
+Torr = 3 Set display pressure Units – kPascal/mbar/
+Torr
+Config type not needed
+930 PC comms ?S 232 = 0 Read PC comms to RS232/RS485
+!S 485 = 1 Set PC comms to RS232/RS485
+Config type not needed
+
+=== PAGE 12 ===
+
+D39730880 Issue J
+Page 8
+Introduction
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+931 Default screen ?S All = 0 Read default screen
+!S Three gauges = 1 Set default screen
+Gauge 1 = 2 Config type 15
+Gauge 2 = 3
+Gauge 3 = 4 Options 2,3,4 are only available to
+Turbo only = 5 D39700640F and earlier.
+One gauge = 6 Options 6,7 are only available to D39700640G
+Six gauges = 7 and later.
+Turbo + one gauge = 8 TC - option 5 only
+TIC - option 0,1,2,3,4,5,6
+IC - options 1,6
+IC6 - options 1,6,7
+Possible IDs are - 913, Read one gauge order
+914, 915, 934, 935, Set one gauge order
+936 and 0 = none Config type 71
+S931 71;Position 1 ID;Pos 2 ID;Pos 3 ID;
+Pos4ID; Pos 5 ID;Pos 6 ID
+Gauge IDs can be in any order and can be
+repeated.
+0 (zero) ID entry means don’t show this
+position.
+As above Read three gauge order
+Set three gauge order
+Config type 72
+S931 72;Position 1 ID;Pos 2 ID; Pos 3 ID;
+Pos4 ID;Pos 5 ID;Pos 6 ID
+Gauge IDs can be in any order and can be
+repeated.
+0 (zero) ID entry means don’t show this
+position but there must be a minimum of
+three non-zero entries.
+932 Fixed/Float ?S Float = 1 Read Float/fixed display (ASG)
+ASG !S Fixed = 0 Write Float/fixed display (ASG)
+Config type not needed
+
+=== PAGE 13 ===
+
+Page 9
+Introduction
+D39730880 Issue J
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+933 System (TIC ?S 0 = no Read/write System On/Off setup
+and TC only) !S 1 = yes Config type not needed
+The message consists of sections of Object
+ID; system on; system off.
+Any number of whole sections can be sent up
+to the maximum of 12. Invalid object IDs will
+be ignored. You can send just the sections
+you wish to alter e.g. !S933915;1;1;910;1;0cr
+The actual structures for each kind of unit
+are shown below. ?S answers will be in this
+order and return all relevant entries.
+TIC
+Turbo 904;on;off;
+Back 910;on;off;
+Gauge1 913;on;off;
+Gauge2 914;on;off;
+Gauge3 915;on;off;
+Relay1 916;on;off;
+Relay2 917;on;off;
+Relay3 918;on;off
+e.g.=S933904;0;1;910;1;0;913;0;0;914;0;
+915;0;0;916;1;1;917;0;0;918;0;0cr
+TC
+Turbo 904;on;off;
+Back 910;on;off;
+Relay1 916;on;off;
+Relay2 917;on;off;
+Relay3 918;on;off;
+e.g.=S933904;0;1;910;1;0;916;1;1;917;0;0;
+918;0;0cr
+Recommend read/modify/write sequence to
+reduce errors.
+!C 0 = off, 1 = on On/off System
+System on will turn on objects marked with a
+1 in the setup on field
+System off will turn off objects marked with
+a 1 in the setup off field
+?V State 0 - 4 System status - state; alert ID; priority
+
+=== PAGE 14 ===
+
+D39730880 Issue J
+Page 10
+Introduction
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+934 Gauge 4 ?V Value - pressure (see Gauge reading and state - value; units type;
+gauge type) or voltage state; alert ID; priority
+0.000 to 11.000 volts.
+?S Master - object ID Read slave setup - master; units type; on
+!S gauge 1/2/3 and turbo setpoint; off setpoint, enable
+speed. Write slave setup - master; units type; on
+Units type - 59, 66, 81 setpoint; off setpoint, enable
+see snvt list. Setpoints Config type = 4
+to suit units type and
+master.
+volts 0.000 - 9.999,
+pressure float,
+speed 0 - 99.
+Gauge type - see gauge Read gauge type - e.g. AIMX
+list Config type = 5
+Gas type - see gas list. Read gauge setup - gas type (volt);
+Filter - 1 = on, 0 = off. filter on/off
+Set gauge setup - gas type (volt);
+filter on/off
+Config type = 7
+0 = 1000 Read ASG range
+1 = 2000 mbar Set ASG range
+Config type = 6
+Gauge name Read user gauge name - 4 characters 0-9,
+A-Z
+Set user gauge name
+Config type = 68
+0 = 0.05 Read CapMan setup - range;units
+1 = 0.1 Write CapMan setup - range;units
+2 = 0.2 Config type = 73
+3 = 1
+....
+10 = 2000
+2 = mBar
+3 = Torr
+
+=== PAGE 15 ===
+
+Page 11
+Introduction
+D39730880 Issue J
+Table 1 - Objects accessed via the PC serial comms (continued)
+Object ID Object Operations Notes
+934 Gauge 4 ?S Filament Read IGC setup
+!S 1 = 1 Write IGC setup
+2 = 2 Filament;head;emission;restrike;constant1;
+Head constant2
+1 = A Config type = 74
+2 = B
+Emission e.g.
+0 = Auto !S913 74;1;1;0;0;0.1;0.1
+1 = 100uAmp
+2 = 1 mAmp
+3 = 10 mAmp
+Restrike
+0 = off
+1 = on
+Constant1
+0.020 to 0.480
+Constant2
+0.020 to 0.480
+!C Commands - see Accept new gauge
+command list On/off
+Zero/calibrate/degas
+935 Gauge 5 See Gauge 4 See Gauge 4
+936 Gauge 6 See Gauge 4 See Gauge 4
+937 Relay 4 ?V See Relay 1 See Relay 1
+?S
+!S
+938 Relay 5 ?V See Relay 1 See Relay 1
+?S
+!S
+939 Relay 6 ?V See Relay 1 See Relay 1
+?S
+!S
+940 Gauge Values ?V Position 1-6. For each attached gauge
+Value - pressure (see <Position byte>;<Gauge value>;
+gauge type) or voltage
+0.000 to 11.000 volts. Examples
+Reply for 1 gauge connected at position 2
+=V940 2;3.9441e+02;
+Reply for 3 gauges connected at positions 2, 3
+and 5 with gauge 2 in voltage mode and
+gauge 5 not ON (e.g. OFF, error, striking etc)
+=V940 2;6.546;3;2.7245e-04;5; 9.9000e+09;
+Note: The pump shall accept the wildcard multi-drop address 99.
+The pump shall accept the wildcard object ID 0 for a ?S and return information from the TIC Status object
+902.
+The following are examples of abbreviations and codings, with their meanings, which appear in subsequent
+paragraphs.
+
+=== PAGE 16 ===
+
+D39730880 Issue J
+Page 12
+Introduction
+Table 2 - Abbreviations
+Abbreviation Meaning
+r returned error code – see Table3
+String may have several ASCII characters
+d decimal ASCII character
+h hexadecimal ASCII character
+ck checksum (1 byte)
+cr carriage return
+1.6.2.1 Node object 901
+where d is the multi-drop address to be stored in EEPROM.
+1.6.2.2 Node object 902
+Query setup returns a data string in the following format:
+TIC;Dxxxxxxxx;serial number;PIC s/w ver
+where 'TIC' is a fixed string for this pump, Dxxxxxx is the software version number fixed by the software, serial
+number is a string loaded during production, PIC s/w ver is the PIC software version.
+System state of key items on the TIC, state value from Turbo, backing, gauge 1, gauge 2, gauge 3, relay 1, relay 2,
+relay 3, alert ID of object 902 and highest priority on the TIC.
+1.6.2.3 Turbo pump object 904
+where s is the state of the pump, a is the alert ID and p is the priority. Number of characters per parameter is as
+required to represent the value.
+where d is 0 = pump off, 1 = pump on.
+
+=== PAGE 17 ===
+
+Page 13
+Introduction
+D39730880 Issue J
+where 3 is the config type and p is the pump type.
+where 4 is the config type, m is the master object, p is pressure '59' or voltage '66', n is the on setpoint, f is the off
+setpoint and e is enabled '1' or disabled '0' e.g.
+=S904 913;59;5.1e-2;4.9e-1;1
+=S904 914;66;3.62;4.34;1.
+1.7 Additional information
+1.7.1 Serial comms response codes (*Cnnn x, *S, *V)
+Table 3 - Serial comms response codes
+Value Meaning
+0 no error
+1 Invalid command for object ID
+2 Invalid query/command
+3 Missing parameter
+4 Parameter out of range
+5 Invalid command in current state - e.g. serial command
+to start or stop when in parallel control mode
+6 Data checksum error
+7 EEPROM read or write error
+8 Operation took too long
+9 Invalid config ID
+1.7.2 Priority
+OK = 0
+warning = 1
+alarm = 2/3
+1.7.3 Alert ID
+No Alert = 0
+ADC Fault = 1
+ADC Not Ready = 2
+
+=== PAGE 18 ===
+
+D39730880 Issue J
+Page 14
+Introduction
+Over Range = 3
+Under Range = 4
+ADC Invalid = 5
+No Gauge = 6
+Unknown = 7
+Not Supported = 8
+New ID = 9
+Over Range = 10
+Under Range = 11
+Over Range = 12
+Ion Em Timeout = 13
+Not Struck = 14
+Filament Fail = 15
+Mag Fail = 16
+Striker Fail = 17
+Not Struck = 18
+Filament Fail = 19
+Cal Error = 20
+Initialising = 21
+Emission Error = 22
+Over Pressure = 23
+ASG Cant Zero = 24
+RampUp Timeout = 25
+Droop Timeout = 26
+Run Hours High = 27
+SC Interlock = 28
+ID Volts Error = 29
+Serial ID Fail = 30
+Upload Active = 31
+DX Fault = 32
+Temp Alert = 33
+SYSI Inhibit = 34
+Ext Inhibit = 35
+Temp Inhibit = 36
+No Reading = 37
+No Message = 38
+NOV Failure = 39
+Upload Timeout = 40
+Download Failed = 41
+No Tube = 42
+Use Gauges 4-6 = 43
+Degas Inhibited = 44
+IGC Inhibited = 45
+Brownout/Short = 46
+
+=== PAGE 19 ===
+
+Page 15
+Introduction
+D39730880 Issue J
+Service due =47
+1.7.4 SNVT values
+VOLTAGE 66 - float
+PRESSURE 59 - float (Pascals only)
+PERCENT 81
+Note: Pressure values used in the configuration setups and in the logging will be in Pascals. They are not stored
+or displayed in the selected units.
+1.7.5 Command list
+Device Off = 0 //general off/on
+Device On = 1
+Gauge Off = 0
+Gauge On = 1
+Gauge New_Id = 2
+Gauge Zero = 3
+Gauge Cal = 4
+Gauge Degas = 5
+Load Defaults = 576
+Upload = 0 //to TIC
+Download = 1 //from TIC
+1.7.6 State
+Off State = 0
+Off Going On State = 1
+On Going Off Shutdown State = 2
+On Going Off Normal State = 3
+On State = 4
+1.7.7 Active gauge states
+Gauge Not connected = 0
+Gauge Connected = 1
+New Gauge Id = 2
+Gauge Change = 3
+Gauge In Alert = 4
+Off = 5
+Striking = 6
+Initialising = 7
+Calibrating = 8
+Zeroing = 9
+Degassing = 10
+On = 11
+
+=== PAGE 20 ===
+
+D39730880 Issue J
+Page 16
+Introduction
+Inhibited = 12
+1.7.8 Full pump states
+TIC’s representation of an attached pump’s state.
+Stopped = 0
+Starting Delay = 1
+Accelerating = 5
+Running = 4
+Stopping Short Delay = 2
+Stopping Normal Delay = 3
+Fault Braking = 6
+Braking = 7
+1.7.9 Gas types
+Nitrogen = 0
+Helium = 1
+Argon = 2
+Carbon Dioxide = 3
+Neon = 4
+Krypton = 5
+Voltage = 6
+1.7.10 Gauge types
+Unknown Device = 0
+No Device = 1
+EXP_CM = 2
+EXP_STD = 3
+CMAN_S = 4
+CMAN_D = 5
+TURBO = 6
+APGM = 7
+APGL = 8
+APGXM = 9
+APGXH = 10
+APGXL = 11
+ATCA = 12
+ATCD = 13
+ATCM = 14
+WRG = 15
+AIMC = 16
+AIMN = 17
+AIMS = 18
+AIMX = 19
+AIGC_I2R = 20
+AIGC_2FIL = 21
+ION_EB = 22
+
+=== PAGE 21 ===
+
+Page 17
+Introduction
+D39730880 Issue J
+AIGXS = 23
+USER = 24
+ASG = 25
+1.7.11 Pump types
+No Pump = 0
+EXDC Pump = 1
+EXT75DX Pump = 3
+EXT255DX = 4
+Mains Backing Pump = 8
+Serial Pump = 9 //temporary until serial comms receives ID from pump
+nEXT - 485 = 10 //TIC only supports this in parallel form
+nEXT - 232 = 11
+nXDS = 12
+Not yet identified = 99
+
+=== PAGE 22 ===
+
+D39730880 Issue J
+Page 18
+Introduction
+
+=== PAGE 23 ===
+
+Index
+D39730880 Issue J
+Index
+A Setup command ...........................................3
+SNVT values ..............................................15
+Abbreviations ............................................12
+State ......................................................15
+Active gauge states .....................................15
+Additional information .................................13
+T
+Alert ID ....................................................13
+TIC serial protocol - multi-drop prefix to a message 3
+C TIC serial protocol messages ............................3
+Command list ............................................15
+Commands ..................................................1
+Communications timings .................................2
+D
+DX, nEXT and nXDS pumps ...............................2
+F
+Full pump states .........................................16
+G
+Gas types .................................................16
+Gauge types ..............................................16
+General command .........................................3
+I
+Introduction ................................................1
+M
+Message basics .............................................1
+O
+Object IDs ..................................................2
+Objects accessed via the PC serial comms ............4
+P
+PC serial ....................................................3
+Priority ....................................................13
+Pump types ...............................................17
+Q
+Queries ......................................................1
+Query setup ................................................3
+Query value ................................................3
+R
+Responses ...................................................2
+S
+Scope ........................................................1
+Serial comms response codes (*Cnnn x, *S, *V) .....13
+Setup ........................................................2
+Page 19
+
+=== PAGE 24 ===
+
+D39730880 Issue J
+This page has been intentionally left blank.
+Page 20
+
+=== PAGE 25 ===
+
+Return the equipment or components for service
+Before you send your equipment to us for service or for any other reason, you must send us a
+completed Declaration of Contamination of Vacuum Equipment and Components – Form HS2. The
+HS2 form tells us if any substances found in the equipment are hazardous, which is important for
+the safety of our employees and all other people involved in the service of your equipment. The
+hazard information also lets us select the correct procedures to service your equipment.
+We provide instructions for completing the form in the Declaration of Contamination of Vacuum
+equipment and Components – Procedure HS1.
+If you are returning a vacuum pump, note the following:
+ If a pump is configured to suit the application, make a record of the configuration before
+returning the pump. All replacement pumps will be supplied with default factory settings.
+ Do not return a pump with accessories fitted. Remove all accessories and retain them for
+future use.
+ The instruction in the returns procedure to drain all fluids does not apply to the lubricant in
+pump oil reservoirs.
+Download the latest documents from www.edwardsvacuum.com/HSForms/, follow the procedure in
+HS1, fill in the electronic HS2 form, print it, sign it, and return the signed copy to Edwards.
+Note: If we do not receive a completed HS2 form, we will not accept the return of the
+equipment.
+A
+eussI
+,00018008P
+
+=== PAGE 26 ===
+
+This page has been intentionally left blank.
+
+=== PAGE 27 ===
+
+This page has been intentionally left blank.
+
+=== PAGE 28 ===
+
+edwardsvacuum.com

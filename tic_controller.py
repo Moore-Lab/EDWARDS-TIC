@@ -26,7 +26,7 @@ class TICController:
     Combines:
     - Connection management  (connect, disconnect)
     - Pressure gauges        (read_gauges, wrg_mbar, apgx_mbar)
-    - Turbo pump             (start, stop, set_speed, read_pump, is_pump_running)
+    - Turbo pump             (start, stop, read_pump, is_pump_running)
 
     Example:
         tic = TICController("COM3")
@@ -34,8 +34,7 @@ class TICController:
             gs = tic.read_gauges()
             print(f"WRG: {gs.wrg.value_mbar:.3e} mbar")
             tic.start_pump()
-            tic.set_pump_speed(80)
-            tel = tic.read_pump()
+tel = tic.read_pump()
             print(tel)
             tic.stop_pump()
             tic.disconnect()
@@ -137,16 +136,6 @@ class TICController:
             raise RuntimeError("Not connected")
         return self._pump.stop()
 
-    def set_pump_speed(self, percent: int) -> bool:
-        """
-        Set the pump normal-speed target (0–100 %).
-
-        0 resets the TIC to its default full-speed target.
-        """
-        if not self._pump:
-            raise RuntimeError("Not connected")
-        return self._pump.set_speed(percent)
-
     def read_pump(self) -> PumpTelemetry:
         """Poll all pump telemetry and return a PumpTelemetry object."""
         if not self._pump:
@@ -187,9 +176,6 @@ class TICController:
                 "status_str": tel.status_str,
                 "speed_pct":  tel.speed_pct,
                 "power_w":    tel.power_w,
-                "current_a":  tel.current_a,
-                "voltage_v":  tel.voltage_v,
-                "temp_c":     tel.temp_c,
                 "errors":     tel.errors,
             }
         return status
@@ -220,12 +206,6 @@ class TICController:
                 print(f"  Speed   : {p['speed_pct']}%")
             if p["power_w"] is not None:
                 print(f"  Power   : {p['power_w']:.1f} W")
-            if p["current_a"] is not None:
-                print(f"  Current : {p['current_a']:.2f} A")
-            if p["voltage_v"] is not None:
-                print(f"  Voltage : {p['voltage_v']:.1f} V")
-            if p["temp_c"] is not None:
-                print(f"  Temp    : {p['temp_c']:.1f} °C")
             if p["errors"]:
                 print(f"  Errors  : {p['errors']}")
         print("=" * 50)
